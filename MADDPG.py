@@ -4,23 +4,26 @@ from replayBuffer import ReplayBuffer
 import torch as T
 import torch.functional as F
 import numpy as np
+from Env import DeepNav
 
 
 class MADDPG:
-    def __init__(self, n_agents, obs_space, tau=0.005,
+    def __init__(self, n_agents, env, obs_space, action_space, tau=0.005,
                  gamma=0.99, l_r=1e-5, path='models/DDPG/'):        
+        
         self.n_agents = n_agents
+        self.env = env
         self.obs_space = obs_space
-        self.action_space = (self.n_agents, 1)                        
+        self.action_space = action_space                        
         self.path = path
-        self.agents: list[DDPGAgent] = [
-            DDPGAgent(agnt, self.obs_space,
-                      self.action_space, gamma, self.n_agents)
-            for agnt in range(self.n_agents)
-        ]       
         self.gamma = gamma
         self.l_r = l_r
-        self.tau = tau        
+        self.tau = tau   
+        self.agents: list[DDPGAgent] = [
+            DDPGAgent(agnt, self.n_agents, self.obs_space, self.action_space, self.gamma, self.tau)
+            for agnt in range(self.n_agents)
+        ]       
+            
 
     def normalize(self, a):
         norm = np.linalg.norm(a)        
@@ -163,5 +166,8 @@ class MADDPG:
 
     #         self.agents[i].actor.load_weights(self.path + f'ANet_{_id}.h5')
     #         self.agents[i].t_actor.load_weights(self.path + f'ATargetNet_{_id}.h5')
-    
 
+if __name__ == '__main__':
+
+    env = DeepNav(2, 0)
+    p = MADDPG(2, env, env.getStateSpec(), env.getActionSpec())

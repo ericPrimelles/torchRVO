@@ -4,14 +4,9 @@ import rvo2
 from Circle import Circle
 import matplotlib.pyplot as plt
 from typing import Any
-import tensorflow as tf
-from utils import flatten
 
 np.set_printoptions(3)
-class DeepNav():
-    
-    
-    
+class DeepNav():    
     def __init__(self, n_agents : int, scenario : int, width : int = 255, height : int = 255, timestep : float = 0.25 , neighbor_dists : float = 1.0, 
                  time_horizont : float=10.0, time_horizont_obst : float = 20.0, radius : float=2.0, 
                  max_speed : float=3.5) -> None:
@@ -35,7 +30,7 @@ class DeepNav():
                
         
         self.positions, self.goals, self.obstacles = self.getScenario().getAgentPosition()
-        self.__state = np.zeros((self.n_agents, 9))
+        self.__state = np.zeros((self.n_agents, 10))
         self.__episode_ended = False
         self.__setupScenario()
         self.success = True
@@ -43,22 +38,18 @@ class DeepNav():
     def calculateDist(self, a : tuple, b : tuple):
         return np.hypot(a[0] - b[0], a[1] - b[1])  
     
-    
-            
-    
-    
-    def __setState(self) -> None:
-        
+    def __setState(self):        
         for i in range(self.n_agents):
             self.__state[i] = self.getAgentState(i)
-    def getAgentState(self, agent):
 
+    def getAgentState(self, agent):
         dirs = [0, 45, 90, 135, 180, 225, 270, 315]
-        a_pos = self.sim.getAgentPosition[agent]
+        a_pos = self.sim.getAgentPosition(agent)
         state = [None] * 10
         state [0] = a_pos[0]
         state [1] = a_pos[1]
-        for poss in self.__state[a,:2]:
+        positions = [self.sim.getAgentPosition(a) for a in range(self.n_agents) if a != agent]
+        for poss in positions:
             x = a_pos[0] - poss[0]
             y = a_pos[1] - poss[1]
             ang = np.degrees(np.arctan(y/x))
@@ -66,7 +57,9 @@ class DeepNav():
             ang_int = np.degrees(np.arcsin(self.radius/norm))
             ang_inf = np.round((ang - ang_int) + 0.5)
             ang_sup = np.round((ang + ang_int) - 0.5)
-            ang_range = list(range(ang_inf, ang_sup + 1))
+            ang_range = np.arange(ang_inf, ang_sup)
+            
+            # ang_range = list(range(ang_inf, ang_sup + 1))
             for indx, a in enumerate(dirs):
                 if a in ang_range:
                     state[indx + 2] = norm - self.radius
@@ -91,7 +84,7 @@ class DeepNav():
         for i in range(self.n_agents):
             self.sim.setAgentPosition(i, self.positions[i])
         self.__episode_ended = False
-        self.__state = self.__setState()
+        self.__setState()
         return self.__state
     
     def __isLegal(self, index):
@@ -201,17 +194,17 @@ class DeepNav():
         
         
         for i in range(self.n_agents):
-            act = np.squeeze(tf.linalg.normalize(actions[i], axis=0)[0])
+            #act = np.squeeze(np.linalg.norm(actions[i], axis=0)[0])
             
-            
+            act = actions[i]
             if np.abs(self.getAgentPos(i)[0] + act[0] * self.timestep) > 512 or np.abs(self.getAgentPos(i)[1] + act[1] * self.timestep) > 512:
                 return
             self.sim.setAgentPrefVelocity(i, tuple(act))
             
     def getStateSpec(self):
-        return self.__state.shape
+        return self.__state[0].shape[0]
     
-    def getActionSpec(self): return [self.n_agents, 2]
+    def getActionSpec(self): return 2
     
     def sample(self):
         a = np.random.uniform(-1, 1, (self.n_agents, 2))
@@ -231,13 +224,18 @@ if __name__ == '__main__':
     np.set_printoptions(2)
     env = DeepNav(2, 0)
     
-    env.reset()
-    print(env.getAgentPos(0))
-    for i in range(100):
-        env.step(env.sample())
-    print(env.getAgentPos(0))
-    env.reset()
-    print(env.getAgentPos(0))
+    s = env.reset()
+    print(s)
+
+    print(env.getActionSpec(), env.getStateSpec())
+    act = env.sample()
+    print(env.step(act))
+    #print(env.getAgentPos(0))
+    #for i in range(100):
+    #    env.step(env.sample())
+    #print(env.getAgentPos(0))
+    #env.reset()
+    #print(env.getAgentPos(0))
     
     
    

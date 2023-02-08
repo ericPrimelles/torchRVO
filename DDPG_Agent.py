@@ -13,26 +13,26 @@ class DDPGAgent:
         self.actor : DDPGActor = DDPGActor(self.obs_space, self.action_space, chkpt=chkpt, name=f'A_{self.agent}')
         self.t_actor : DDPGActor = DDPGActor(self.obs_space, self.action_space, chkpt=chkpt, name=f'A_t_{self.agent}')
         self.critic : DDPGCritic = DDPGCritic(self.n_agents * (self.obs_space + self.action_space), chkpt=chkpt, name=f'C_{self.agent}')
-        self.t_critic : DDPGCritic = DDPGActor(self.obs_space, self.action_space, chkpt=chkpt, name=f'C_t_{self.agent}')
+        self.t_critic : DDPGCritic = DDPGCritic(self.n_agents * (self.obs_space + self.action_space), chkpt=chkpt, name=f'C_{self.agent}')
         self.gamma = gamma             
         # Set the initial weigths equally for actors and critics
         self.tau = tau
-        self.update_networks(tau=1.0)    
+        self.update_target(tau=1.0)    
 
     def update_target(self, tau : float = None):
         if tau == None:
             tau = self.tau
-
+        
         t_a_p = self.t_actor.named_parameters()
         a_p = self.actor.named_parameters()
 
         t_a_d = dict(t_a_p)
         a_d = dict(a_p)
 
-        for name in c_d:
+        for name in a_d:
             a_d[name] = tau*a_d[name].clone() + \
                     (1-tau)*t_a_d[name].clone()
-
+       
         self.t_actor.load_state_dict(a_d)
 
         t_c_p = self.t_critic.named_parameters()
@@ -41,11 +41,11 @@ class DDPGAgent:
         t_c_d = dict(t_c_p)
         c_d = dict(c_p)
 
-        for name in a_d:
+        for name in c_d:
             c_d[name] = tau*c_d[name].clone() + \
                     (1-tau)*t_c_d[name].clone()
 
-        self.t_actor.load_state_dict(c_d)
+        self.t_critic.load_state_dict(c_d)
 
     
     def save(self):
