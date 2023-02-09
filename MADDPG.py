@@ -22,7 +22,8 @@ class MADDPG:
         self.agents: list[DDPGAgent] = [
             DDPGAgent(agnt, self.n_agents, self.obs_space, self.action_space, self.gamma, self.tau)
             for agnt in range(self.n_agents)
-        ]       
+        ]
+        self.device = T.device('cuda:0' if T.cuda.is_available() else 'cpu')      
             
 
     def normalize(self, a):
@@ -30,18 +31,10 @@ class MADDPG:
         return a * 1 / norm     
 
     def choose_action(self, s: T.Tensor, target: bool = False):
-        if s._rank() <= 2:
-                s = T.unsqueeze(s, 0)
-        if target:
-            acts = T.stack([
-                self.agents[i].t_actor.choose_action(s[:, i, :])
-                for i in range(self.n_agents) 
-            ])    
-            return acts            
-        acts = T.stack([
-            self.agents[i].actor.choose_action(s[:, i, :])
-            for i in range(self.n_agents) 
-        ])
+        acts = np.zeros((self.n_agents, self.action_space))
+        print(s.shape)
+        for i in range(self.n_agents):
+            acts[i] = self.agents[i].choose_action(s[:,i, :], target)
         return acts
 
     def learn(self, replay_buffer: ReplayBuffer, device: T.device):
@@ -94,34 +87,36 @@ class MADDPG:
             agent.update_target()        
         return
 
-    def train(self, replay_buffer: ReplayBuffer, total_steps: int):
+    def train(self, rb: ReplayBuffer, total_steps: int, n_episodes : int):
         acc_rwd = []
-        for epoch in range(self.n_epochs):            
-            for episode in range(self.n_episodes):
+        for epoch in range(total_steps):            
+            for episode in range(n_episodes):
                 s = self.env.reset() 
                 reward = []
                 ts: int = 0
                 H :int = 10000
                 while 1:
-                    a = self.policy(s)                    
+                    s_e = T.unsqueeze(T.from_numpy(np.float32(s)), 0)
+                    a = self.choose_action(s_e)                    
                     #a = self.env.sample()
                     s_1, r, done = self.env.step(a)                    
                     reward.append(r)
-                    self.rb.store(s, a, r, s_1, done)
-                    if self.rb.ready:
-                        s_s, a_s, r_s, s_1_s, dones_s = replay_buffer.sample()
-                        a_s = a_s.reshape((self.n_agents, 64, 2))
-                        s_s = T.from_numpy(s_s)
+                    rb.store(s, a, r, s_1, done)
+                    if rb.ready:
+                        s_s, a_s, r_s, s_1_s, dones_s = rb.sample()
+                        print(s_s.shape)
+                        #a_s = a_s.reshape((self.n_agents, 64, 2))
+                        s_s = T.from_numpy(np.float32(s_s))
                         #a_s = tf.convert_to_tensor(a_s)
-                        r_s = T.from_numpy(r_s)
-                        s_1_s = T.from_numpy(s_1_s)
-                        dones_s = T.from_numpy(dones_s)
-                        a_state = self.choose_action(s_s, training=True)
-                        t_a_state = self.choose_action(s_1_s, True, True)
-                        for i in range(self.n_agents):
-                            self.agents[i].update(s_s, a_s, r_s, s_1_s, a_state, t_a_state)
-                            self.update_target(self.agents[i].t_critic.variables, self.agents[i].critic.variables, i)
-                            self.update_target(self.agents[i].t_actor.variables, self.agents[i].actor.variables, i)                                                    
+                        r_s = T.from_numpy(np.float32(r_s))
+                        s_1_s = T.from_numpy(np.float32(s_1_s))
+                        dones_s = T.from_numpy(np.float32(dones_s))
+                        a_state = self.choose_action(s_s)
+                        t_a_state = self.choose_action(s_1_s, True)
+                        
+                            
+                        self.update_target(self.agents[i].t_critic.variables, self.agents[i].critic.variables, i)
+                        self.update_target(self.agents[i].t_actor.variables, self.agents[i].actor.variables, i)                                                    
                     s = s_1
                     ts +=1
                     if done == 1 or ts > H:                        
@@ -171,3 +166,5 @@ if __name__ == '__main__':
 
     env = DeepNav(2, 0)
     p = MADDPG(2, env, env.getStateSpec(), env.getActionSpec())
+    mem = ReplayBuffer(env.getStateSpec(), env.getActionSpec(), env.n_agents, max_length=10000)
+    p.train(mem, 1000, 10)

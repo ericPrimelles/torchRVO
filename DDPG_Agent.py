@@ -60,12 +60,18 @@ class DDPGAgent:
         self.critic.load()
         self.t_critic.load()
 
-    def choose_action(self, obs):
+    def choose_action(self, obs, target : bool = False):
 
-        state = T.tensor([obs], dtype=T.float).to(self.actor.device)
+        if target:
+            state = obs.to(self.actor.device)
+            actions = self.t_actor.forward(state)
+            noise = T.rand(self.action_space).to(self.actor.device)
+            action = actions + noise
+            return action.detach().cpu().numpy()[0]
+        
+        state = obs.to(self.actor.device)
         actions = self.actor.forward(state)
-        noise = T.rand(self.n_actions).to(self.actor.device)
+        noise = T.rand(self.action_space).to(self.actor.device)
         action = actions + noise
-
         return action.detach().cpu().numpy()[0]
         

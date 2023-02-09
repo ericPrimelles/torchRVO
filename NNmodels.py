@@ -71,3 +71,8 @@ class DDPGCritic(nn.Module):
 
     def load(self):
         self.load_state_dict(T.load(self.chkpt))
+
+if __name__ == '__main__':
+
+    x = DDPGActor(10, 2)
+    print(x(T.randn(1, 10)))

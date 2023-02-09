@@ -8,11 +8,9 @@ class ReplayBuffer:
     def __init__(self, observation_spec, action_spec, n_agents,max_length : int = 1000, batch_size : int = 256) -> None:
         self.max_length = max_length
         self.size_batch = batch_size
-        s_space = list(observation_spec)
-        s_space.insert(0, max_length)
-        action_spec.insert(0, max_length)
-        self.s = self.s_1 = np.empty(s_space, dtype=np.float32)
-        self.action = np.empty(action_spec, dtype=np.float32) 
+        
+        self.s = self.s_1 = np.empty((max_length, n_agents, observation_spec), dtype=np.float32)
+        self.action = np.empty((max_length, n_agents, action_spec), dtype=np.float32) 
         self.reward =  np.empty((max_length, n_agents, 1), dtype=np.float32)
         self.done = np.empty(max_length, dtype=np.float32)
          
