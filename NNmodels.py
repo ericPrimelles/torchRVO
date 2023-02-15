@@ -39,9 +39,10 @@ class DDPGActor(nn.Module):
         self.load_state_dict(T.load(self.chkpt))
 
 class DDPGCritic(nn.Module):
-    def __init__(self, input_dims : int, beta :float = 1e-05, chkpt : str = '', name: str = ''):
+    def __init__(self, input_dims : any, beta :float = 1e-05, chkpt : str = '', name: str = ''):
         super().__init__()
         self.chkpt = chkpt
+        
         self.network = nn.Sequential(
             nn.Linear(in_features=input_dims, out_features=64, bias=True),
             nn.Dropout(p=0.5),
@@ -63,7 +64,10 @@ class DDPGCritic(nn.Module):
         self.to(self.device)        
 
     def forward(self, state, actions):
-        x = self.network(T.cat([state, actions], dim=1))
+        tnsr = T.cat([state, actions], dim=2)
+        s = tnsr.shape
+        tnsr = tnsr.reshape((s[0], s[1] * s[2]))
+        x = self.network(tnsr)
         return x
 
     def save(self):

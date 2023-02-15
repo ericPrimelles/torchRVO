@@ -192,7 +192,7 @@ class DeepNav():
     
     def setPrefferedVel(self, actions: np.float32) -> None:
         
-        
+        actions = np.squeeze(actions)
         for i in range(self.n_agents):
             #act = np.squeeze(np.linalg.norm(actions[i], axis=0)[0])
             

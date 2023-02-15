@@ -2,7 +2,7 @@ import NNmodels as models
 from DDPG_Agent import DDPGAgent
 from replayBuffer import ReplayBuffer
 import torch as T
-import torch.functional as F
+import torch.nn.functional as F
 import numpy as np
 from Env import DeepNav
 
@@ -24,17 +24,17 @@ class MADDPG:
             for agnt in range(self.n_agents)
         ]
         self.device = T.device('cuda:0' if T.cuda.is_available() else 'cpu')      
-            
+        
 
     def normalize(self, a):
         norm = np.linalg.norm(a)        
         return a * 1 / norm     
 
     def choose_action(self, s: T.Tensor, target: bool = False):
-        acts = np.zeros((self.n_agents, self.action_space))
-        print(s.shape)
+        acts = np.zeros((s.shape[0], self.n_agents, self.action_space), dtype=np.float32)
+        
         for i in range(self.n_agents):
-            acts[i] = self.agents[i].choose_action(s[:,i, :], target)
+            acts[:, i] = self.agents[i].choose_action(s[:,i, :], target)
         return acts
 
     def learn(self, replay_buffer: ReplayBuffer, device: T.device):
@@ -47,46 +47,70 @@ class MADDPG:
         states_1 = T.tensor(states_1, dtype=T.float).to(device)
         dones = T.tensor(dones).to(device)
 
-        all_agents_new_actions = []
-        all_agents_new_mu_actions = []
-        old_agents_actions = []
+        new_pi = T.from_numpy(self.choose_action(states_1, True))
+        pi = T.from_numpy(self.choose_action(states))
 
-        for agent_idx, agent in enumerate(self.agents):
-            new_states = T.tensor(states_1[agent_idx], 
-                                 dtype=T.float).to(device)
+        for i, agnt in enumerate(self.agents):
+            t_q_value = agnt.t_critic(states_1, new_pi).flatten()
+            #t_q_value[dones[:,0]] = 0.0  
+            q_value = agnt.critic(states, pi)
 
-            new_pi = agent.t_actor.forward(new_states)
+            target = rewards[:,i] + agnt.gamma * t_q_value
+            q_loss = F.mse_loss(target, q_value)
+            agnt.critic.optimizer.zero_grad()
+            q_loss.backward(retain_graph=True)
+            agnt.critic.optimizer.step()
 
-            all_agents_new_actions.append(new_pi)
-            mu_states = T.tensor(actions[agent_idx], 
-                                 dtype=T.float).to(device)
-            pi = agent.actor.forward(mu_states)
-            all_agents_new_mu_actions.append(pi)
-            old_agents_actions.append(actions[agent_idx])
-
-        new_actions = T.cat([acts for acts in all_agents_new_actions], dim=1)
-        mu = T.cat([acts for acts in all_agents_new_mu_actions], dim=1)
-        old_actions = T.cat([acts for acts in old_agents_actions],dim=1)
-
-        for agent_idx, agent in enumerate(self.agents):
-            critic_value_ = agent.t_critic.forward(states_1, new_actions).flatten()
-            critic_value_[dones[:,0]] = 0.0
-            critic_value = agent.critic.forward(states, old_actions).flatten()
-
-            target = rewards[:,agent_idx] + agent.gamma*critic_value_
-            critic_loss = F.mse_loss(target, critic_value)
-            agent.critic.optimizer.zero_grad()
-            critic_loss.backward(retain_graph=True)
-            agent.critic.optimizer.step()
-
-            actor_loss = agent.critic.forward(states, mu).flatten()
+            actor_loss = agnt.critic(states, pi)
             actor_loss = -T.mean(actor_loss)
-            agent.actor.optimizer.zero_grad()
+            agnt.actor.optimizer.zero_grad()
             actor_loss.backward(retain_graph=True)
-            agent.actor.optimizer.step()
-            agent.update_target()        
-        return
+            agnt.actor.optimizer.step()
+            agnt.update_target()
 
+#           
+        #all_agents_new_actions = []
+        #all_agents_new_mu_actions = []
+        #old_agents_actions = []
+#
+        #for agent_idx, agent in enumerate(self.agents):
+        #    new_states = T.tensor(states_1[agent_idx], 
+        #                         dtype=T.float).to(device)
+#
+        #    new_pi = agent.t_actor.forward(new_states)
+#
+        #    all_agents_new_actions.append(new_pi)
+        #    mu_states = T.tensor(states[agent_idx], 
+        #                         dtype=T.float).to(device)
+        #    pi = agent.actor.forward(mu_states)
+#
+        #    all_agents_new_mu_actions.append(pi)
+        #    old_agents_actions.append(actions[agent_idx])
+        #print(all_agents_new_actions)
+        #new_actions = T.cat([acts for acts in all_agents_new_actions], dim=1)
+        #mu = T.cat([acts for acts in all_agents_new_mu_actions], dim=1)
+        #old_actions = T.cat([acts for acts in old_agents_actions],dim=1)
+#
+        #for agent_idx, agent in enumerate(self.agents):
+        #    
+        #    critic_value_ = agent.t_critic.forward(states_1, new_actions).flatten()
+        #    critic_value_[dones[:,0]] = 0.0
+        #    critic_value = agent.critic.forward(states, old_actions).flatten()
+#
+        #    target = rewards[:,agent_idx] + agent.gamma*critic_value_
+        #    critic_loss = F.mse_loss(target, critic_value)
+        #    agent.critic.optimizer.zero_grad()
+        #    critic_loss.backward(retain_graph=True)
+        #    agent.critic.optimizer.step()
+#
+        #    actor_loss = agent.critic.forward(states, mu).flatten()
+        #    actor_loss = -T.mean(actor_loss)
+        #    agent.actor.optimizer.zero_grad()
+        #    actor_loss.backward(retain_graph=True)
+        #    agent.actor.optimizer.step()
+        #    agent.update_target()        
+        #return
+#
     def train(self, rb: ReplayBuffer, total_steps: int, n_episodes : int):
         acc_rwd = []
         for epoch in range(total_steps):            
@@ -102,21 +126,8 @@ class MADDPG:
                     s_1, r, done = self.env.step(a)                    
                     reward.append(r)
                     rb.store(s, a, r, s_1, done)
-                    if rb.ready:
-                        s_s, a_s, r_s, s_1_s, dones_s = rb.sample()
-                        print(s_s.shape)
-                        #a_s = a_s.reshape((self.n_agents, 64, 2))
-                        s_s = T.from_numpy(np.float32(s_s))
-                        #a_s = tf.convert_to_tensor(a_s)
-                        r_s = T.from_numpy(np.float32(r_s))
-                        s_1_s = T.from_numpy(np.float32(s_1_s))
-                        dones_s = T.from_numpy(np.float32(dones_s))
-                        a_state = self.choose_action(s_s)
-                        t_a_state = self.choose_action(s_1_s, True)
-                        
-                            
-                        self.update_target(self.agents[i].t_critic.variables, self.agents[i].critic.variables, i)
-                        self.update_target(self.agents[i].t_actor.variables, self.agents[i].actor.variables, i)                                                    
+                    self.learn(rb, self.device)
+                                                                    
                     s = s_1
                     ts +=1
                     if done == 1 or ts > H:                        
@@ -124,7 +135,7 @@ class MADDPG:
                         ts=0
                         acc_rwd.append(np.mean(reward))
                         reward = []
-                        self.epsion += self.epsilon_increment
+                        
                         break                  
                     
                 
