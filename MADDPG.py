@@ -47,8 +47,8 @@ class MADDPG:
         states_1 = T.tensor(states_1, dtype=T.float).to(device)
         dones = T.tensor(dones).to(device)
 
-        new_pi = T.from_numpy(self.choose_action(states_1, True))
-        pi = T.from_numpy(self.choose_action(states))
+        new_pi = T.from_numpy(self.choose_action(states_1, True)).to(device)
+        pi = T.from_numpy(self.choose_action(states)).to(device)
 
         for i, agnt in enumerate(self.agents):
             t_q_value = agnt.t_critic(states_1, new_pi).flatten()
@@ -139,8 +139,8 @@ class MADDPG:
                         break                  
                     
                 
-            self.save()
-            self.test()
+            # self.save()
+            # self.test()
            
             # dump(rwd, self.path + f'reward_epcohs_{i}.joblib')
         return           
@@ -175,7 +175,7 @@ class MADDPG:
 
 if __name__ == '__main__':
 
-    env = DeepNav(2, 0)
-    p = MADDPG(2, env, env.getStateSpec(), env.getActionSpec())
+    env = DeepNav(4, 0)
+    p = MADDPG(4, env, env.getStateSpec(), env.getActionSpec())
     mem = ReplayBuffer(env.getStateSpec(), env.getActionSpec(), env.n_agents, max_length=10000)
     p.train(mem, 1000, 10)
