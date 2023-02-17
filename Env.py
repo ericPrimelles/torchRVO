@@ -2,7 +2,7 @@ import re
 import numpy as np
 import rvo2
 from Circle import Circle
-import matplotlib.pyplot as plt
+#import matplotlib.pyplot as plt
 from typing import Any
 
 np.set_printoptions(3)
@@ -53,10 +53,15 @@ class DeepNav():
             x = a_pos[0] - poss[0]
             y = a_pos[1] - poss[1]
             ang = np.degrees(np.arctan(y/x))
+            
             norm = np.linalg.norm((x, y))
             ang_int = np.degrees(np.arcsin(self.radius/norm))
+            if np.isnan(ang_int):
+                print(norm)
+                input()
             ang_inf = np.round((ang - ang_int) + 0.5)
             ang_sup = np.round((ang + ang_int) - 0.5)
+            
             ang_range = np.arange(ang_inf, ang_sup)
             
             # ang_range = list(range(ang_inf, ang_sup + 1))
