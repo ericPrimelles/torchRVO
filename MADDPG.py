@@ -5,7 +5,7 @@ import torch as T
 import torch.nn.functional as F
 import numpy as np
 from Env import DeepNav
-
+from pettingzoo.mpe import simple_v2
 
 class MADDPG:
     def __init__(self, n_agents, env, obs_space, action_space, tau=0.005,
@@ -34,7 +34,10 @@ class MADDPG:
         acts = np.zeros((s.shape[0], self.n_agents, self.action_space), dtype=np.float32)
         
         for i in range(self.n_agents):
-            acts[:, i] = self.agents[i].choose_action(s[:,i, :], target)
+            temp = s[:,i, :]
+            acts[:, i] = self.agents[i].choose_action(temp, target)
+            acts[:, i] = self.normalize(acts[:, i])
+            # acts = np.array(list(map(np.linalg.norm, acts)))
         return acts
 
     def learn(self, replay_buffer: ReplayBuffer, device: T.device):
@@ -115,22 +118,26 @@ class MADDPG:
         acc_rwd = []
         for epoch in range(total_steps):            
             for episode in range(n_episodes):
-                s = self.env.reset() 
+                self.env.reset()
+                s = self.env.observe('agent_0') 
                 reward = []
                 ts: int = 0
                 H :int = 10000
                 while 1:
                     s_e = T.unsqueeze(T.from_numpy(np.float32(s)), 0)
+                    s_e = T.unsqueeze(T.from_numpy(np.float32(s_e)), 0)
                     a = self.choose_action(s_e)                    
                     #a = self.env.sample()
-                    s_1, r, done = self.env.step(a)                    
+                    a =  T.squeeze(T.from_numpy(a))
+                    env.step(a)                    
+                    s_1, r, done, truncation, info = self.env.last()
                     reward.append(r)
                     rb.store(s, a, r, s_1, done)
                     self.learn(rb, self.device)
                                                                     
                     s = s_1
                     ts +=1
-                    if done == 1 or ts > H:                        
+                    if done == 1 or ts > H or truncation:                        
                         print(f'Epoch {epoch} Episode {episode} ended after {ts} timesteps Reward {np.mean(reward)}')
                         ts=0
                         acc_rwd.append(np.mean(reward))
@@ -175,7 +182,8 @@ class MADDPG:
 
 if __name__ == '__main__':
 
-    env = DeepNav(4, 0)
-    p = MADDPG(4, env, env.getStateSpec(), env.getActionSpec())
-    mem = ReplayBuffer(env.getStateSpec(), env.getActionSpec(), env.n_agents, max_length=10000)
+    env = simple_v2.env(max_cycles=25, continuous_actions=True)
+    
+    p = MADDPG(1, env, 4, 5)
+    mem = ReplayBuffer(4, 5, env.max_num_agents, max_length=10000)
     p.train(mem, 1000, 10)
