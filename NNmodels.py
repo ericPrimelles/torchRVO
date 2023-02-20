@@ -8,18 +8,18 @@ import os
 class DDPGActor(nn.Module):
     def __init__(self, input_dims: int = None, output_dims: int = None, name : str = '',chkpt : str = '', beta : float=1e-04 ):
         super().__init__()
-        print(output_dims)
-        self_chkpt = os.path.join(chkpt, name)
+        print(output_dims)        
+        self.chkpt = os.path.join(chkpt, name)        
         self.network = nn.Sequential(
-            nn.Linear(in_features=input_dims, out_features=64, bias=True),
+            nn.Linear(in_features=input_dims, out_features=128, bias=True),
             nn.Dropout(p=0.5),
             # nn.BatchNorm1d(num_features=64),
             nn.ReLU(),
-            nn.Linear(in_features=64, out_features=32, bias=True),
+            nn.Linear(in_features=128, out_features=64, bias=True),
             nn.Dropout(p=0.5),
             # nn.BatchNorm1d(num_features=64),
             nn.ReLU(),
-            nn.Linear(in_features=32, out_features=output_dims, bias=True),
+            nn.Linear(in_features=64, out_features=output_dims, bias=True),
             nn.Dropout(p=0.5),
             # nn.BatchNorm1d(num_features=64),
             nn.ReLU())        
@@ -41,18 +41,17 @@ class DDPGActor(nn.Module):
 class DDPGCritic(nn.Module):
     def __init__(self, input_dims : any, beta :float = 1e-05, chkpt : str = '', name: str = ''):
         super().__init__()
-        self.chkpt = chkpt
-        
+        self.chkpt = os.path.join(chkpt, name)        
         self.network = nn.Sequential(
-            nn.Linear(in_features=input_dims, out_features=64, bias=True),
+            nn.Linear(in_features=input_dims, out_features=128, bias=True),
             nn.Dropout(p=0.5),
             # nn.BatchNorm1d(),
             nn.ReLU(),
-            nn.Linear(in_features=64, out_features=32, bias=True),
+            nn.Linear(in_features=128, out_features=64, bias=True),
             nn.Dropout(p=0.5),
             # nn.BatchNorm1d(),
             nn.ReLU(),
-            nn.Linear(in_features=32, out_features=1, bias=True),
+            nn.Linear(in_features=64, out_features=1, bias=True),
             nn.Dropout(p=0.5),
             # nn.BatchNorm1d(),
             nn.ReLU())
@@ -71,7 +70,7 @@ class DDPGCritic(nn.Module):
         return x
 
     def save(self):
-        T.save(self.state_dict(), self.chkpt)
+        T.save(self.state_dict(),self.chkpt)
 
     def load(self):
         self.load_state_dict(T.load(self.chkpt))

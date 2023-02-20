@@ -13,7 +13,7 @@ class DDPGAgent:
         self.actor : DDPGActor = DDPGActor(self.obs_space, self.action_space, chkpt=chkpt, name=f'A_{self.agent}')
         self.t_actor : DDPGActor = DDPGActor(self.obs_space, self.action_space, chkpt=chkpt, name=f'A_t_{self.agent}')
         self.critic : DDPGCritic = DDPGCritic(self.n_agents * (self.obs_space + self.action_space), chkpt=chkpt, name=f'C_{self.agent}')
-        self.t_critic : DDPGCritic = DDPGCritic(self.n_agents * (self.obs_space + self.action_space), chkpt=chkpt, name=f'C_{self.agent}')
+        self.t_critic : DDPGCritic = DDPGCritic(self.n_agents * (self.obs_space + self.action_space), chkpt=chkpt, name=f'C_t_{self.agent}')
         self.gamma = gamma             
         # Set the initial weigths equally for actors and critics
         self.tau = tau

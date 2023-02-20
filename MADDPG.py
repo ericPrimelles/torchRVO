@@ -6,6 +6,8 @@ import torch.nn.functional as F
 import numpy as np
 from Env import DeepNav
 from pettingzoo.mpe import simple_v2
+from time import sleep
+# import threading
 
 class MADDPG:
     def __init__(self, n_agents, env, obs_space, action_space, tau=0.005,
@@ -36,8 +38,7 @@ class MADDPG:
         for i in range(self.n_agents):
             temp = s[:,i, :]
             acts[:, i] = self.agents[i].choose_action(temp, target)
-            acts[:, i] = self.normalize(acts[:, i])
-            # acts = np.array(list(map(np.linalg.norm, acts)))
+            acts[:, i] = self.normalize(acts[:, i])            
         return acts
 
     def learn(self, replay_buffer: ReplayBuffer, device: T.device):
@@ -71,49 +72,6 @@ class MADDPG:
             agnt.actor.optimizer.step()
             agnt.update_target()
 
-#           
-        #all_agents_new_actions = []
-        #all_agents_new_mu_actions = []
-        #old_agents_actions = []
-#
-        #for agent_idx, agent in enumerate(self.agents):
-        #    new_states = T.tensor(states_1[agent_idx], 
-        #                         dtype=T.float).to(device)
-#
-        #    new_pi = agent.t_actor.forward(new_states)
-#
-        #    all_agents_new_actions.append(new_pi)
-        #    mu_states = T.tensor(states[agent_idx], 
-        #                         dtype=T.float).to(device)
-        #    pi = agent.actor.forward(mu_states)
-#
-        #    all_agents_new_mu_actions.append(pi)
-        #    old_agents_actions.append(actions[agent_idx])
-        #print(all_agents_new_actions)
-        #new_actions = T.cat([acts for acts in all_agents_new_actions], dim=1)
-        #mu = T.cat([acts for acts in all_agents_new_mu_actions], dim=1)
-        #old_actions = T.cat([acts for acts in old_agents_actions],dim=1)
-#
-        #for agent_idx, agent in enumerate(self.agents):
-        #    
-        #    critic_value_ = agent.t_critic.forward(states_1, new_actions).flatten()
-        #    critic_value_[dones[:,0]] = 0.0
-        #    critic_value = agent.critic.forward(states, old_actions).flatten()
-#
-        #    target = rewards[:,agent_idx] + agent.gamma*critic_value_
-        #    critic_loss = F.mse_loss(target, critic_value)
-        #    agent.critic.optimizer.zero_grad()
-        #    critic_loss.backward(retain_graph=True)
-        #    agent.critic.optimizer.step()
-#
-        #    actor_loss = agent.critic.forward(states, mu).flatten()
-        #    actor_loss = -T.mean(actor_loss)
-        #    agent.actor.optimizer.zero_grad()
-        #    actor_loss.backward(retain_graph=True)
-        #    agent.actor.optimizer.step()
-        #    agent.update_target()        
-        #return
-#
     def train(self, rb: ReplayBuffer, total_steps: int, n_episodes : int):
         acc_rwd = []
         for epoch in range(total_steps):            
@@ -146,44 +104,55 @@ class MADDPG:
                         break                  
                     
                 
-            # self.save()
-            # self.test()
+            self.save()
+
+            # if epoch % 10 == 0:
+
+            #     self.test()
            
             # dump(rwd, self.path + f'reward_epcohs_{i}.joblib')
         return           
 
     def get_inputs(self, batch):
-        return
+        return  
     
-    def save(self, filename):
-        T.save(self.actor.state_dict(), filename)
+    def save(self):
+        for i, agnt in enumerate(self.agents):
+            agnt.save()            
 
-    def load(self, filename):
-        self.actor.load_state_dict(T.load(filename))
-        self.actor.eval()
-
-    # def save(self):
-    #     for i in self.agents:
-    #         _id = i.agent
-    #         i.critic.save_weights(self.path + f'QNet_{_id}.h5')
-    #         i.t_critic.save_weights(self.path + f'QTargetNet_{_id}.h5')
-        
-    #         i.actor.save_weights(self.path + f'ANet_{_id}.h5')
-    #         i.t_actor.save_weights(self.path + f'ATargetNet_{_id}.h5')
+    def load(self):
+        for i, agnt in enumerate(self.agents):
+            agnt.load()
             
-    # def load(self):
-    #     for i in range(self.n_agents):
-    #         _id = self.agents[i].agent
-    #         self.agents[i].critic.load_weights(self.path + f'QNet_{_id}.h5')
-    #         self.agents[i].t_critic.load_weights(self.path + f'QTargetNet_{_id}.h5')
+            
+    def test(self, visualize=False):
+        
+        self.env.reset()
+        self.load()
+        s, r, done, truncation, info = self.env.last()
+        t = 0
+        while not done and not truncation:
+            s_e = T.unsqueeze(T.from_numpy(np.float32(s)), 0)
+            s_e = T.unsqueeze(T.from_numpy(np.float32(s_e)), 0)
+            a = self.choose_action(s_e)                    
+            a =  T.squeeze(T.from_numpy(a))
+            self.env.step(a)
 
-    #         self.agents[i].actor.load_weights(self.path + f'ANet_{_id}.h5')
-    #         self.agents[i].t_actor.load_weights(self.path + f'ATargetNet_{_id}.h5')
+            if visualize:
+                self.env.render()
+                sleep(0.3)                
+            s, r, done, truncation, info = self.env.last()
+
+            
+            t+= 1
+        print(f"Test step ended after {t} steps with reward: {r}")
 
 if __name__ == '__main__':
-
-    env = simple_v2.env(max_cycles=25, continuous_actions=True)
+    # , render_mode='human'
+    env = simple_v2.env(max_cycles=50, continuous_actions=True, render_mode='human')
     
     p = MADDPG(1, env, 4, 5)
     mem = ReplayBuffer(4, 5, env.max_num_agents, max_length=10000)
-    p.train(mem, 1000, 10)
+    # p.train(mem, 200, 10)
+    p.test(True)
+    
