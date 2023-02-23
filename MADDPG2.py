@@ -4,7 +4,7 @@ from replayBuffer import ReplayBuffer
 import torch as T
 import torch.nn.functional as F
 import numpy as np
-# from Env import DeepNav
+from Env import DeepNav
 from pettingzoo.mpe import simple_v2
 from time import sleep
 # import threading
@@ -29,17 +29,15 @@ class MADDPG:
         
 
     def normalize(self, a):
-        norm = np.linalg.norm(a)
-        if norm == 0.0:
-            return a        
+        norm = np.linalg.norm(a)        
         return a * 1 / norm     
 
-    def choose_action(self, s: T.Tensor, target: bool = False, noise : bool = True):
+    def choose_action(self, s: T.Tensor, target: bool = False):
         acts = np.zeros((s.shape[0], self.n_agents, self.action_space), dtype=np.float32)
         
         for i in range(self.n_agents):
             temp = s[:,i, :]
-            acts[:, i] = self.agents[i].choose_action(temp, target, noise)
+            acts[:, i] = self.agents[i].choose_action(temp, target)
             acts[:, i] = self.normalize(acts[:, i])            
         return acts
 
@@ -53,13 +51,13 @@ class MADDPG:
         states_1 = T.tensor(states_1, dtype=T.float).to(device)
         dones = T.tensor(dones).to(device)
 
-        new_pi = T.from_numpy(self.choose_action(states_1, True, False)).to(device)
-        pi = T.from_numpy(self.choose_action(states, noise=False)).to(device)
+        new_pi = T.from_numpy(self.choose_action(states_1, True)).to(device)
+        pi = T.from_numpy(self.choose_action(states)).to(device)
 
         for i, agnt in enumerate(self.agents):
             t_q_value = agnt.t_critic(states_1, new_pi).flatten()
             #t_q_value[dones[:,0]] = 0.0  
-            q_value = agnt.critic(states, actions).flatten()
+            q_value = agnt.critic(states, pi).flatten()
 
             target = rewards[:,i].flatten() + agnt.gamma * t_q_value            
            
@@ -137,7 +135,7 @@ class MADDPG:
         while not done and not truncation:
             s_e = T.unsqueeze(T.from_numpy(np.float32(s)), 0)
             s_e = T.unsqueeze(T.from_numpy(np.float32(s_e)), 0)
-            a = self.choose_action(s_e, noise=False)                    
+            a = self.choose_action(s_e)                    
             a =  T.squeeze(T.from_numpy(a))
             self.env.step(a)
 
@@ -152,10 +150,10 @@ class MADDPG:
 
 if __name__ == '__main__':
     # , render_mode='human'
-    env = simple_v2.env(max_cycles=50, continuous_actions=True, render_mode='human')
+    env = simple_v2.env(max_cycles=200, continuous_actions=True, render_mode='human')
     
     p = MADDPG(1, env, 4, 5)
-    mem = ReplayBuffer(4, 5, env.max_num_agents, max_length=2000, batch_size=256)
-    # p.train(mem, 10000, 10)
+    mem = ReplayBuffer(4, 5, env.max_num_agents, max_length=10000)
+    # p.train(mem, 5000, 10)
     p.test(True)
     

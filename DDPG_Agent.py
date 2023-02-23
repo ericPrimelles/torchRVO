@@ -3,9 +3,10 @@ from NNmodels import DDPGActor
 from NNmodels import DDPGCritic
 from torch.optim import Adam
 import torch as T
+import numpy as np
 
 class DDPGAgent:
-    def __init__(self, agnt : int, n_agents : int, obs_space : int, action_space : int, gamma : float = 0.95, tau=0.01, chkpt=''):
+    def __init__(self, agnt : int, n_agents : int, obs_space : int, action_space : int, gamma : float = 0.95, tau=0.01, chkpt='', instance_id=''):
         self.agent = agnt
         self.n_agents = n_agents
         self.obs_space = obs_space
@@ -60,18 +61,23 @@ class DDPGAgent:
         self.critic.load()
         self.t_critic.load()
 
-    def choose_action(self, obs, target : bool = False):
+    def choose_action(self, obs, target : bool = False, noise : bool = True):
 
         if target:
             state = obs.to(self.actor.device)
-            actions = self.t_actor.forward(state)
-            noise = T.rand(self.action_space).to(self.actor.device)
-            action = actions + noise
+            action = self.t_actor.forward(state)
+            
+            if noise:
+                noise_val = T.rand(self.action_space).to(self.actor.device)
+                action = action + noise_val
             return action.detach().cpu().numpy()[0]
         
         state = obs.to(self.actor.device)
-        actions = self.actor.forward(state)
-        noise = T.rand(self.action_space).to(self.actor.device)
-        action = actions + noise
-        return action.detach().cpu().numpy()[0]
-        
+        action = self.actor.forward(state)
+        # print(action)
+        if noise:
+            noise_val = T.rand(self.action_space).to(self.actor.device)
+            action = action + noise_val
+        # if np.linalg.norm(action) == 0:
+        #     action = action + 0.0001
+        return action.detach().cpu().numpy()[0]    
