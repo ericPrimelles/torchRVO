@@ -7,11 +7,11 @@ import numpy as np
 # from Env import DeepNav
 from pettingzoo.mpe import simple_v2
 from time import sleep
-# import threading
+import sys
 
 class MADDPG:
     def __init__(self, n_agents, env, obs_space, action_space, tau=0.005,
-                 gamma=0.99, l_r=1e-5, path='models/DDPG/'):        
+                 gamma=0.99, l_r=1e-5, path='models/DDPG/', instance_id = ''):        
         
         self.n_agents = n_agents
         self.env = env
@@ -22,7 +22,7 @@ class MADDPG:
         self.l_r = l_r
         self.tau = tau   
         self.agents: list[DDPGAgent] = [
-            DDPGAgent(agnt, self.n_agents, self.obs_space, self.action_space, self.gamma, self.tau)
+            DDPGAgent(agnt, self.n_agents, self.obs_space, self.action_space, self.gamma, self.tau, instance_id=instance_id)
             for agnt in range(self.n_agents)
         ]
         self.device = T.device('cuda:0' if T.cuda.is_available() else 'cpu')      
@@ -152,10 +152,13 @@ class MADDPG:
 
 if __name__ == '__main__':
     # , render_mode='human'
-    env = simple_v2.env(max_cycles=50, continuous_actions=True, render_mode='human')
-    
-    p = MADDPG(1, env, 4, 5)
-    mem = ReplayBuffer(4, 5, env.max_num_agents, max_length=2000, batch_size=256)
-    # p.train(mem, 10000, 10)
-    p.test(True)
+    frame_count, buffer_len, batch_size, epochs, episodes, train, pid = map(int, sys.argv[1:])
+    r_mode = None if train == 1 else 'human'
+    env = simple_v2.env(max_cycles=frame_count, continuous_actions=True, render_mode=r_mode)
+    p = MADDPG(1, env, 4, 5, instance_id=str(pid))
+    mem = ReplayBuffer(4, 5, env.max_num_agents, max_length=buffer_len, batch_size=batch_size)
+    if train:    
+        p.train(mem, epochs, episodes)
+    else:
+        p.test(True)
     
