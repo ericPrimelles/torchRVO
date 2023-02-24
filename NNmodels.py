@@ -9,7 +9,7 @@ class DDPGActor(nn.Module):
     def __init__(self, input_dims: int = None, output_dims: int = None, name : str = '',chkpt : str = '', beta : float=1e-04 ):
         super().__init__()
         print(output_dims)        
-        self.chkpt = os.path.join(chkpt, name)        
+        self.chkpt = os.path.join(chkpt, 'runs', name)        
         self.network = nn.Sequential(
             nn.Linear(in_features=input_dims, out_features=128, bias=True),
             nn.Dropout(p=0.5),
@@ -41,7 +41,7 @@ class DDPGActor(nn.Module):
 class DDPGCritic(nn.Module):
     def __init__(self, input_dims : any, beta :float = 1e-05, chkpt : str = '', name: str = ''):
         super().__init__()
-        self.chkpt = os.path.join(chkpt, name)        
+        self.chkpt = os.path.join(chkpt, 'runs', name)       
         self.network = nn.Sequential(
             nn.Linear(in_features=input_dims, out_features=128, bias=True),
             nn.Dropout(p=0.5),
