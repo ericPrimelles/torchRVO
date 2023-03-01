@@ -8,7 +8,6 @@ import os
 class DDPGActor(nn.Module):
     def __init__(self, input_dims: int = None, output_dims: int = None, name : str = '',chkpt : str = '', beta : float=1e-04 ):
         super().__init__()
-        print(output_dims)        
         self.chkpt = os.path.join(chkpt, 'runs', name)        
         self.network = nn.Sequential(
             nn.Linear(in_features=input_dims, out_features=128, bias=True),
@@ -63,9 +62,9 @@ class DDPGCritic(nn.Module):
         self.to(self.device)        
 
     def forward(self, state, actions):
-        tnsr = T.cat([state, actions], dim=2)
+        tnsr = T.cat([state, actions], dim=1)
         s = tnsr.shape
-        tnsr = tnsr.reshape((s[0], s[1] * s[2]))
+        tnsr = tnsr.reshape((s[0], s[1]))
         x = self.network(tnsr)
         return x
 

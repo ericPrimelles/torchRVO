@@ -1,6 +1,6 @@
 import NNmodels as models
 from DDPG_Agent import DDPGAgent
-from replayBuffer import ReplayBuffer
+from buffer import MultiAgentReplayBuffer
 import torch as T
 import torch.nn.functional as F
 import numpy as np
@@ -43,60 +43,93 @@ class MADDPG:
             acts[:, i] = self.normalize(acts[:, i])            
         return acts
 
-    def learn(self, replay_buffer: ReplayBuffer, device: T.device):
+    def learn(self, replay_buffer: MultiAgentReplayBuffer, device: T.device):
         if not replay_buffer.ready:
             return
-        states, actions, rewards, states_1, dones = replay_buffer.sample()
+        actor_states, states, actions, rewards, \
+        actor_new_states, states_1, dones = replay_buffer.sample()
         states = T.tensor(states, dtype=T.float).to(device)
         actions = T.tensor(actions, dtype=T.float).to(device)
         rewards = T.tensor(rewards).to(device)
         states_1 = T.tensor(states_1, dtype=T.float).to(device)
         dones = T.tensor(dones).to(device)
 
-        new_pi = T.from_numpy(self.choose_action(states_1, True, False)).to(device)
-        pi = T.from_numpy(self.choose_action(states, noise=False)).to(device)
+        all_new_actions = []
+        all_old_actions = []
+
+        for agent_idx, agent in enumerate(self.agents):
+            new_states = T.tensor(actor_new_states[agent_idx], 
+                                  dtype=T.float).to(device)
+            new_pi = agent.t_actor(new_states)
+            all_new_actions.append(new_pi)
+            all_old_actions.append(actions[agent_idx])
+
+        new_actions = T.cat([action for action in all_new_actions], dim=1)
+        old_actions = T.cat([action for action in all_old_actions], dim=1)
+
 
         for i, agnt in enumerate(self.agents):
-            t_q_value = agnt.t_critic(states_1, new_pi).flatten()
-            #t_q_value[dones[:,0]] = 0.0  
-            q_value = agnt.critic(states, actions).flatten()
+            with T.no_grad():
+                t_q_value = agnt.t_critic(states_1, new_actions).flatten()  
+                target = rewards[:,i].flatten() + (1 - dones[:,0].int()) + agnt.gamma * t_q_value            
+            
+            q_value = agnt.critic(states, old_actions).flatten()
+            
 
-            target = rewards[:,i].flatten() + agnt.gamma * t_q_value            
-           
             q_loss = F.mse_loss(target, q_value)
             agnt.critic.optimizer.zero_grad()
             q_loss.backward(retain_graph=True)
             agnt.critic.optimizer.step()
 
-            actor_loss = agnt.critic(states, pi)
+            mu_states = T.tensor(actor_states[i], dtype=T.float).to(device)
+            old_actions_clone = old_actions.clone()
+            old_actions_clone[:, i*self.action_space:i*self.action_space + self.action_space] = agnt.actor(mu_states)
+            actor_loss = agnt.critic(states, old_actions_clone)
             actor_loss = -T.mean(actor_loss)
             agnt.actor.optimizer.zero_grad()
             actor_loss.backward(retain_graph=True)
             agnt.actor.optimizer.step()
-            agnt.update_target()
 
-    def train(self, rb: ReplayBuffer, total_steps: int, n_episodes : int):
+        for agent in self.agents:    
+            agent.update_target()
+
+
+    def train(self, rb: MultiAgentReplayBuffer, total_steps: int, n_episodes : int):
         acc_rwd = []
         for epoch in range(total_steps):            
             for episode in range(n_episodes):
                 self.env.reset()
-                s = self.env.observe('agent_0') 
                 reward = []
                 ts: int = 0
                 H :int = 10000
+                obs = self.env.observe('agent_0') 
                 while 1:
-                    s_e = T.unsqueeze(T.from_numpy(np.float32(s)), 0)
-                    s_e = T.unsqueeze(T.from_numpy(np.float32(s_e)), 0)
-                    a = self.choose_action(s_e)                    
+                    obs = T.unsqueeze(T.from_numpy(np.float32(obs)), 0)
+                    obs = T.unsqueeze(T.from_numpy(np.float32(obs)), 0)
+                    actions = self.choose_action(obs)                    
                     #a = self.env.sample()
-                    a =  T.squeeze(T.from_numpy(a))
-                    env.step(a)                    
-                    s_1, r, done, truncation, info = self.env.last()
+                    actions =  T.squeeze(T.from_numpy(actions))
+                    env.step(actions)                    
+                    obs_1, r, done, truncation, info = self.env.last()
+                    state = np.array([])
+                    for o in obs:
+                        o = T.squeeze(T.from_numpy(np.float32(o)))
+                        state = np.concatenate([state, o])
+
+                    obs_1 = T.unsqueeze(T.from_numpy(np.float32(obs_1)), 0)
+
+                    state_1 = np.array([])
+                    for o in obs_1:
+                        state_1 = np.concatenate([state_1, o])
+                    
+                    r = np.float32(r)
                     reward.append(r)
-                    rb.store(s, a, r, s_1, done)
+                    # raw_obs, state, action, reward, 
+                            #    raw_obs_, state_, done
+                    rb.store_transition(obs, state, actions, r, obs_1, state_1, done)
                     self.learn(rb, self.device)
                                                                     
-                    s = s_1
+                    obs = obs_1
                     ts +=1
                     if done == 1 or ts > H or truncation:                        
                         print(f'Epoch {epoch} Episode {episode} ended after {ts} timesteps Reward {np.mean(reward)}')
@@ -152,11 +185,21 @@ class MADDPG:
 
 if __name__ == '__main__':
     # , render_mode='human'
+    n_agents = 1
     frame_count, buffer_len, batch_size, epochs, episodes, train, pid = map(int, sys.argv[1:])
     r_mode = None if train == 1 else 'human'
     env = simple_v2.env(max_cycles=frame_count, continuous_actions=True, render_mode=r_mode)
-    p = MADDPG(1, env, 4, 5, instance_id=str(pid))
-    mem = ReplayBuffer(4, 5, env.max_num_agents, max_length=buffer_len, batch_size=batch_size)
+    actor_dims = []
+    for i in range(n_agents):
+        agent_key = f"agent_{i}"
+        actor_dims.append(env.observation_spaces[agent_key].shape[0])
+    critic_dims = sum(actor_dims)
+    p = MADDPG(n_agents, env, 4, 5, instance_id=str(pid))
+    # mem = ReplayBuffer(4, 5, env.max_num_agents, max_length=buffer_len, batch_size=batch_size)
+    # max_size, critic_dims, actor_dims, 
+    #         n_actions, n_agents, batch_size
+    mem = MultiAgentReplayBuffer(max_size=buffer_len, critic_dims=critic_dims, actor_dims=actor_dims,n_actions=5, n_agents=n_agents, batch_size=batch_size)
+    
     if train:    
         p.train(mem, epochs, episodes)
     else:
