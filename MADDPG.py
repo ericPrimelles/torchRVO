@@ -71,7 +71,7 @@ class MADDPG:
         for i, agnt in enumerate(self.agents):
             with T.no_grad():
                 t_q_value = agnt.t_critic(states_1, new_actions).flatten()  
-                target = rewards[:,i].flatten() + (1 - dones[:,0].int()) + agnt.gamma * t_q_value            
+                target = rewards[:,i].flatten() + (1 - dones[:,0].int()) * agnt.gamma * t_q_value            
             
             q_value = agnt.critic(states, old_actions).flatten()
             
@@ -99,7 +99,7 @@ class MADDPG:
         for epoch in range(total_steps):            
             for episode in range(n_episodes):
                 self.env.reset()
-                reward = []
+                rwd = []
                 ts: int = 0
                 H :int = 10000
                 obs = self.env.observe('agent_0') 
@@ -123,8 +123,8 @@ class MADDPG:
                         state_1 = np.concatenate([state_1, o])
                     
                     r = np.float32(r)
-                    reward.append(r)
-                    # raw_obs, state, action, reward, 
+                    rwd.append(r)
+                    # raw_obs, state, action, __rwd, 
                             #    raw_obs_, state_, done
                     rb.store_transition(obs, state, actions, r, obs_1, state_1, done)
                     self.learn(rb, self.device)
@@ -132,10 +132,10 @@ class MADDPG:
                     obs = obs_1
                     ts +=1
                     if done == 1 or ts > H or truncation:                        
-                        print(f'Epoch {epoch} Episode {episode} ended after {ts} timesteps Reward {np.mean(reward)}')
+                        print(f'Epoch {epoch} Episode {episode} ended after {ts} timesteps Reward {np.mean(rwd)}')
                         ts=0
-                        acc_rwd.append(np.mean(reward))
-                        reward = []
+                        acc_rwd.append(np.mean(rwd))
+                        rwd = []
                         
                         break                  
                     
@@ -146,7 +146,7 @@ class MADDPG:
 
             #     self.test()
            
-            # dump(rwd, self.path + f'reward_epcohs_{i}.joblib')
+            # dump(rwd, self.path + f'__rwd_epcohs_{i}.joblib')
         return           
 
     def get_inputs(self, batch):
@@ -192,7 +192,7 @@ if __name__ == '__main__':
     actor_dims = []
     for i in range(n_agents):
         agent_key = f"agent_{i}"
-        actor_dims.append(env.observation_spaces[agent_key].shape[0])
+        actor_dims.append(env.observation_space(agent_key).shape[0])
     critic_dims = sum(actor_dims)
     p = MADDPG(n_agents, env, 4, 5, instance_id=str(pid))
     # mem = ReplayBuffer(4, 5, env.max_num_agents, max_length=buffer_len, batch_size=batch_size)

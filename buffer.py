@@ -75,7 +75,7 @@ class MultiAgentReplayBuffer:
             actor_states.append(self.actor_state_memory[agent_idx][batch])
             actor_new_states.append(self.actor_new_state_memory[agent_idx][batch])
             actions.append(self.actor_action_memory[agent_idx][batch])
-
+        actions = np.array(actions)
         return actor_states, states, actions, rewards, \
                actor_new_states, states_, terminal
 
